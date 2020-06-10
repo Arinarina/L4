@@ -1,0 +1,132 @@
+#include <stdio.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <arpa/inet.h>
+
+void main() {
+int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd == -1)
+    {
+        perror("Ошибка сокета");
+        exit(EXIT_FAILURE);
+    }
+    struct sockaddr_in addr = {0};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(34543);
+    int result = inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
+    switch (result)
+    {
+        case -1:
+            perror("Неподходящее семейство адресов");
+            exit(EXIT_FAILURE);
+            break;
+        case 0:
+            printf("Некорректный адрес\n");
+            exit(EXIT_FAILURE);
+            break;
+        default:
+            break;
+    }
+    int connection_result = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
+    if (connection_result == -1)
+    {
+        perror("Ошибка при соединении");
+        exit(EXIT_FAILURE);
+    }
+    printf("Введите точность (столько знаков после запятой в числе Пи будут правильными):\n");
+    int precision;
+    scanf("%d",&precision);
+    write(fd, (void*)&precision, sizeof(int));
+    double pi_res = 0;
+    ssize_t response_size = 0;
+    response_size = read(fd, (void*)&pi_res, sizeof(double));
+    if (response_size == -1) {
+        perror("Ошибка при чтении");
+        exit(EXIT_FAILURE);
+    }
+    if (response_size == 0) {
+        printf("EOF\n");
+        exit(EXIT_FAILURE);
+    }
+    printf("Ответ сервера %.*f\n", precision,pi_res);
+    sleep(1);
+    close(fd);
+}
+
+				Server.c
+#include <stdio.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <arpa/inet.h>
+
+double pi(int precision) {
+    double epsilon = 10.0;
+    for (int i = 0; i < precision; ++i) {
+        epsilon= epsilon / 10.0;
+    }
+    printf("%f\n",epsilon );
+    double n = 0.0;
+    double S1,S2;
+    S1 = S2 = 0;
+    do {
+        n++;
+        S1 = S2 + 4.0/(2.0*n-1.0);
+        n++;
+        S2 = S1 - 4.0/(2.0*n-1.0);
+    }while (S1-S2 > epsilon);
+    return (S1+S2)/2.0;
+}
+
+void main() {
+    int main_socket = socket(AF_INET,SOCK_STREAM,0);
+    if (main_socket == -1)
+    {
+        perror("Ошибка при создании сокета");
+        exit(EXIT_FAILURE);
+    }
+    struct sockaddr_in addr = {0};
+    socklen_t addrlen = 0;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(34543);
+    int bind_res = bind(main_socket, (struct sockaddr*)&addr, sizeof(addr));
+    if (bind_res == -1)
+    {
+        perror("Ошибка связывания");
+        exit(EXIT_FAILURE);
+    }
+    int listen_res = listen(main_socket,1);
+    if (listen_res == -1)
+    {
+        perror("Ошибка прослушивания");
+        exit(EXIT_FAILURE);
+    }
+    addrlen = sizeof(addr);
+    int fd = accept(main_socket, (struct sockaddr*) &addr, &addrlen);
+    int precision = 0;
+    ssize_t nbytes = read(fd,(void*)&precision,sizeof(int));
+    printf("Полученая точность: %d\n", precision);
+    switch (nbytes)
+    {
+        case -1:
+            perror("Ошибка чтения");
+            exit(EXIT_FAILURE);
+            break;
+        case 0:
+            printf("EOF\n");
+            exit(EXIT_FAILURE);
+            break;
+        default:
+            break;
+    }
+    double pi_res = pi(precision);
+    write(fd, (void*)&pi_res, sizeof(double));
+    sleep(1);
+    close(main_socket);
+    close(fd);
+}
